@@ -139,6 +139,7 @@ td.red{color:var(--red);font-weight:700}
 </header>
 
 <div class="casebar" id="caseBar">
+  <button id="caseBackBtn" class="ghost" style="display:none;padding:7px 10px;flex:0 0 auto">🗂 總表</button>
   <span class="lbl">個案</span>
   <select id="caseSel"></select>
   <span class="who" id="whoLabel"></span>
@@ -149,7 +150,8 @@ td.red{color:var(--red);font-weight:700}
   <button data-tab="buy">補貨</button>
   <button data-tab="items">品項</button>
   <button data-tab="log">紀錄</button>
-  <button data-tab="settings">設定</button>
+  <button data-tab="report">報表</button>
+  <button data-tab="settings" id="navSettings">設定</button>
 </nav>
 
 <main>
@@ -194,6 +196,10 @@ td.red{color:var(--red);font-weight:700}
     <div class="card"><div id="logList"></div></div>
   </section>
 
+  <section id="tab-report" style="display:none">
+    <div id="reportBody"></div>
+  </section>
+
   <section id="tab-settings" style="display:none">
     <div class="card" id="caseMgmtCard">
       <div class="sectitle">🗂 個案管理</div>
@@ -228,13 +234,45 @@ td.red{color:var(--red);font-weight:700}
 <section id="overviewScreen" style="display:none">
   <div class="ov-head">🗂 個案總覽 <span class="muted">點選個案進入細項</span></div>
   <div class="ov-grid" id="ovGrid"></div>
-  <div style="margin-top:14px"><button class="ghost" id="ovAddCase">＋ 新增個案</button></div>
+  <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap"><button class="ghost" id="ovStats">📊 統計報表</button><button class="ghost" id="ovManage">🗂 管理/刪除個案</button><button class="ghost" id="ovAddCase">＋ 新增個案</button></div>
+</section>
+
+<section id="statsScreen" style="display:none">
+  <div class="ov-head"><button class="ghost" id="statsBack" style="padding:7px 10px">← 總覽</button> 📊 統計報表</div>
+  <div id="statsBody"></div>
 </section>
 
 <div class="submitbar" id="submitbar"><span class="info" id="submitInfo">尚未輸入</span><button class="primary" id="submitBtn">送出本班點班</button></div>
 
 <div class="modal-bg" id="modalBg"><div class="modal" id="modalBox"></div></div>
 <div class="toast" id="toast"></div>
+
+<div class="login-bg" id="connectBg" style="display:none">
+  <div class="login-card">
+    <img class="login-logo" id="connLogo" alt="王牌特護">
+    <div class="en">ELITE CARE</div>
+    <h2>連線雲端</h2>
+    <div class="tagline">首次使用請輸入雲端密碼連線</div>
+    <div class="field"><input id="connToken" type="password" placeholder="雲端密碼(TOKEN)"></div>
+    <button id="connBtn">連線</button>
+    <div class="login-foot" id="connUrl" style="word-break:break-all;margin-top:12px"></div>
+    <div class="login-foot"><a href="javascript:void(0)" id="connLocal" style="color:#94a3b8">先以本機模式建立</a></div>
+  </div>
+</div>
+
+<div class="login-bg" id="setupBg" style="display:none">
+  <div class="login-card">
+    <img class="login-logo" id="setupLogo" alt="王牌特護">
+    <div class="en">ELITE CARE</div>
+    <h2>首次設定</h2>
+    <div class="tagline">建立管理者帳號</div>
+    <div class="field"><input id="setNo" inputmode="numeric" placeholder="管理者編號"></div>
+    <div class="field"><input id="setName" placeholder="管理者姓名"></div>
+    <div class="field"><input id="setPw" type="password" placeholder="設定密碼"></div>
+    <button id="setBtn">建立並進入</button>
+    <div class="login-foot">此帳號為管理者,登入後可新增其他人員</div>
+  </div>
+</div>
 
 <div class="login-bg" id="loginBg">
   <div class="login-card">
@@ -256,7 +294,7 @@ const IMG_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABYoAAAWKCAYAAABW
 document.getElementById("hdLogo").src = IMG_LOGO;
 document.getElementById("loginLogo").src = IMG_LOGO;
 
-const DEFAULT_GS = { url:"", token:"" };
+const DEFAULT_GS = { url:"https://script.google.com/macros/s/AKfycbxE9C6ByKRYCNb8i13DORrHGlGazIvyCBfxDkbBRx3MCSnUc-8zUnJZXzE2F3g5uM8F/exec", token:"" };
 
 const SEED_ITEMS = [
   {name:"紙尿褲 M號", unit:"包", safety:2, target:6},
@@ -272,12 +310,8 @@ const SEED_ITEMS = [
   {name:"酒精棉片",   unit:"盒", safety:1, target:3},
   {name:"灌食空針",   unit:"支", safety:3, target:10}
 ];
-const SEED_CASES = [ {code:"A051", name:"範例個案"} ];
-const SEED_USERS = [
-  {no:"001", name:"管理者", role:"admin"},
-  {no:"192", name:"胡曉柔"}, {no:"212", name:"林婉如"}, {no:"259", name:"李宜真"},
-  {no:"393", name:"李佳芯"}, {no:"395", name:"翁儷庭"}, {no:"458", name:"張以靖"}, {no:"608", name:"林郁儒"}
-];
+const SEED_CASES = [];
+const SEED_USERS = [];
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -310,22 +344,20 @@ const DB = {
     catch(e){ toast("⚠️ 上傳暫時失敗,已暫存,稍後自動重試"); } this.flushing=false; updateSyncBadge(); },
   async loadRemote(silent){ if(this.mode!=="sheets"||this.loading)return; if(this.outbox.length){ await this.flush(); if(this.outbox.length)return; } this.loading=true;
     try{ const r=await fetch(this.gs.url+"?token="+encodeURIComponent(this.gs.token)+"&action=load"); const j=await r.json(); if(j.error) throw new Error(j.error);
-      COLS.forEach(c=>this.data[c]=j[c]||{}); this.saveLocal(); ensureCase(); renderCaseBar(); if(viewMode==="overview") renderOverview(); else renderAll(); if(!silent) toast("已更新 ✓"); }
+      COLS.forEach(c=>this.data[c]=j[c]||{}); normalizeData(); this.saveLocal(); ensureCase(); renderCaseBar(); if(viewMode==="overview") renderOverview(); else renderAll(); if(!silent) toast("已更新 ✓"); }
     catch(e){ if(!silent) toast("讀取失敗:"+e.message); } this.loading=false; },
   async connectGS(url,token,auto){ const old={mode:this.mode,gs:this.gs}; this.gs={url,token}; if(!auto) toast("連線測試中…");
     try{ const r=await fetch(url+"?token="+encodeURIComponent(token)+"&action=load"); const j=await r.json(); if(j.error) throw new Error(j.error);
       const has=(j.cases&&Object.keys(j.cases).length)||(j.items&&Object.keys(j.items).length);
-      if(has){ if(!auto && !confirm("試算表已有資料,要改用試算表的資料嗎?\n(此裝置尚未同步的本機紀錄將被覆蓋)")){ this.gs=old.gs; this.mode=old.mode; return; } COLS.forEach(c=>this.data[c]=j[c]||{}); }
+      if(has){ if(!auto && !confirm("試算表已有資料,要改用試算表的資料嗎?\n(此裝置尚未同步的本機紀錄將被覆蓋)")){ this.gs=old.gs; this.mode=old.mode; return; } COLS.forEach(c=>this.data[c]=j[c]||{}); normalizeData(); }
       else{ await this.api({action:"import",data:this.data}); toast("已將本機資料上傳至試算表 ✓"); }
       this.mode="sheets"; localStorage.setItem("sup2_gs",JSON.stringify({url,token})); this.saveLocal(); ensureCase(); renderCaseBar(); updateSyncBadge(); if(viewMode==="overview") renderOverview(); else renderAll(); toast("✅ 試算表同步已啟用"); }
     catch(e){ this.gs=old.gs; this.mode=old.mode; toast("連線失敗:"+e.message); } },
   disconnectGS(){ this.mode="local"; this.outbox=[]; this.saveOutbox(); localStorage.removeItem("sup2_gs"); updateSyncBadge(); toast("已停用同步,改用本機模式"); },
-  init(){ if(!this.loadLocal()) this.seedAll();
-    if(!this.data.cases || !Object.keys(this.data.cases).length) this.seedAll();
-    if(!this.data.users || !Object.keys(this.data.users).length) this.seedUsers();
+  init(){ this.loadLocal(); normalizeData();
     const saved=localStorage.getItem("sup2_gs");
-    if(saved){ try{ const{url,token}=JSON.parse(saved); this.gs={url,token}; this.mode="sheets"; $("#gsUrl").value=url; $("#gsToken").value=token; this.flush().then(()=>this.loadRemote(true)); return; }catch(e){} }
-    if(DEFAULT_GS.url && DEFAULT_GS.token){ $("#gsUrl").value=DEFAULT_GS.url; $("#gsToken").value=DEFAULT_GS.token; this.connectGS(DEFAULT_GS.url,DEFAULT_GS.token,true); } }
+    if(saved){ try{ const{url,token}=JSON.parse(saved); this.gs={url,token}; this.mode="sheets"; $("#gsUrl").value=url; $("#gsToken").value=token; this.flush().then(()=>this.loadRemote(true)).then(bootDecide); return; }catch(e){} }
+    if(DEFAULT_GS.url){ $("#gsUrl").value=DEFAULT_GS.url; if(DEFAULT_GS.token) $("#gsToken").value=DEFAULT_GS.token; } if(DEFAULT_GS.url && DEFAULT_GS.token){ this.connectGS(DEFAULT_GS.url,DEFAULT_GS.token,true).then(bootDecide); } else { bootDecide(); } }
 };
 function updateSyncBadge(){
   $("#refreshBtn").style.display = DB.mode==="sheets" ? "" : "none";
@@ -339,11 +371,11 @@ let viewMode = "case";
 let curCase = localStorage.getItem("sup2_case") || "";
 const allCases = () => Object.values(DB.data.cases||{}).sort((a,b)=>(a.code||"").localeCompare(b.code||""));
 function nurseList(c){ return String((c&&c.nurses)||"").split(",").map(s=>s.trim()).filter(Boolean); }
-function canAccess(id){ if(isAdmin())return true; const c=DB.data.cases[id]; if(!c)return false; return !!curUser && nurseList(c).includes(curUser.no); }
-function allowedCases(){ const list=allCases(); if(isAdmin())return list; if(!curUser)return []; return list.filter(c=>nurseList(c).includes(curUser.no)); }
+function canAccess(id){ if(isAdmin())return true; const c=DB.data.cases[id]; if(!c)return false; return !!curUser && nurseList(c).includes(String(curUser.no)); }
+function allowedCases(){ const list=allCases(); if(isAdmin())return list; if(!curUser)return []; return list.filter(c=>nurseList(c).includes(String(curUser.no))); }
 function findCase(code){ const cs=DB.data.cases||{}; if(cs[code])return cs[code]; const lc=String(code).toLowerCase(); return Object.values(cs).find(c=>String(c.code).toLowerCase()===lc)||null; }
 function ensureCase(){ const list=allowedCases(); if(!list.length){ curCase=""; return; } if(!list.some(c=>c.id===curCase)) curCase=list[0].id; localStorage.setItem("sup2_case",curCase); }
-function setCase(id){ if(id && !canAccess(id)){ guardAlert(); renderCaseBar(); return; } curCase=id; localStorage.setItem("sup2_case",id); renderCaseBar(); renderAll(); }
+function setCase(id){ if(id && !canAccess(id)){ guardAlert(); renderCaseBar(); return; } curCase=String(id); localStorage.setItem("sup2_case",id); renderCaseBar(); renderAll(); }
 function guardAlert(){ openModal('<div style="text-align:center;padding:6px"><div style="font-size:46px">⚠️</div><h3 style="color:var(--red);margin:10px 0 6px">此個案非您照護的個案</h3><p class="muted">您僅能存取被指派照護的個案。如需存取,請聯絡管理者指派。</p><div class="btnrow"><button class="primary" onclick="closeModal()">我知道了</button></div></div>'); }
 function blockedView(){ if(!curCase) return '<p class="muted" style="padding:10px">目前沒有可存取的個案。請管理者到「設定 → 個案管理」指派個案給您。</p>'; if(!canAccess(curCase)) return '<div style="text-align:center;padding:24px"><div style="font-size:42px">⚠️</div><h3 style="color:var(--red);margin:8px 0">此個案非您照護的個案</h3><p class="muted">您僅能存取被指派照護的個案。</p></div>'; return null; }
 function renderCaseBar(){ const list=allowedCases(); const sel=$("#caseSel");
@@ -351,12 +383,12 @@ function renderCaseBar(){ const list=allowedCases(); const sel=$("#caseSel");
 }
 
 /* ====== 畫面切換:總覽 / 個案 ====== */
-function showOverview(){ viewMode="overview"; $("#loginBg").style.display="none"; $("#overviewScreen").style.display=""; $("#caseBar").style.display="none"; document.querySelector("nav").style.display="none"; document.querySelector("main").style.display="none"; $("#submitbar").style.display="none"; $("#buybar").style.display="none"; $("#overviewBtn").style.display="none"; renderOverview(); }
-function enterCase(id){ if(id && !canAccess(id)){ guardAlert(); return; } curCase=id; localStorage.setItem("sup2_case",id); viewMode="case";
-  $("#loginBg").style.display="none"; $("#overviewScreen").style.display="none"; $("#caseBar").style.display="flex"; document.querySelector("nav").style.display="flex"; document.querySelector("main").style.display="";
-  $("#overviewBtn").style.display=isAdmin()?"":"none";
+function showOverview(){ viewMode="overview"; $("#loginBg").style.display="none"; $("#statsScreen").style.display="none"; $("#overviewScreen").style.display=""; $("#caseBar").style.display="none"; document.querySelector("nav").style.display="none"; document.querySelector("main").style.display="none"; $("#submitbar").style.display="none"; $("#buybar").style.display="none"; $("#overviewBtn").style.display="none"; renderOverview(); }
+function enterCase(id){ if(id && !canAccess(id)){ guardAlert(); return; } curCase=String(id); localStorage.setItem("sup2_case",id); viewMode="case";
+  $("#loginBg").style.display="none"; $("#statsScreen").style.display="none"; $("#overviewScreen").style.display="none"; $("#caseBar").style.display="flex"; document.querySelector("nav").style.display="flex"; document.querySelector("main").style.display="";
+  $("#overviewBtn").style.display=isAdmin()?"":"none"; $("#caseBackBtn").style.display=isAdmin()?"":"none";
   curTab="count"; document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("active",x.dataset.tab==="count"));
-  ["count","buy","items","log","settings"].forEach(t=>$("#tab-"+t).style.display=t==="count"?"":"none");
+  ["count","buy","items","log","report","settings"].forEach(t=>$("#tab-"+t).style.display=t==="count"?"":"none");
   $("#submitbar").style.display="flex"; $("#buybar").style.display="none";
   renderCaseBar(); renderAll();
 }
@@ -377,16 +409,16 @@ function latestCount(itemId){ let best=null; Object.values(DB.data.counts||{}).f
 let curUser=null;
 function pwMatch(s,i){ if(s==null)return false; s=String(s);i=String(i); if(s===i)return true; if(i.trim()!==""&&!isNaN(i)&&!isNaN(s)&&Number(s)===Number(i))return true; return false; }
 function isAdmin(){ return curUser && curUser.role==="admin"; }
-function applyRole(){ $("#userMgmtCard").style.display=isAdmin()?"":"none"; $("#caseMgmtCard").style.display=isAdmin()?"":"none"; renderWho(); }
+function applyRole(){ const a=isAdmin(); $("#userMgmtCard").style.display=a?"":"none"; $("#caseMgmtCard").style.display=a?"":"none"; $("#navSettings").style.display=a?"":"none"; renderWho(); }
 function renderWho(){ $("#whoLabel").innerHTML = curUser ? '點班者 <b>'+esc(curUser.name)+'</b>' : ''; }
-function showLogin(){ curUser=null; localStorage.removeItem("sup2_session"); $("#overviewScreen").style.display="none"; document.querySelector("main").style.display=""; $("#loginBg").style.display="flex"; $("#loginPw").value=""; updateLoginMode(); }
-function tryRestoreSession(){ const no=localStorage.getItem("sup2_session"); if(no){ const u=users().find(x=>x.no===no&&x.active!==false); if(u){ curUser=u; return true; } } return false; }
-async function refreshData(){ try{ const r=await fetch(DB.gs.url+"?token="+encodeURIComponent(DB.gs.token)+"&action=load"); const j=await r.json(); if(!j.error){ COLS.forEach(c=>DB.data[c]=j[c]||{}); DB.saveLocal(); } }catch(e){} }
+function showLogin(){ curUser=null; localStorage.removeItem("sup2_session"); $("#statsScreen").style.display="none"; $("#overviewScreen").style.display="none"; document.querySelector("main").style.display=""; $("#loginBg").style.display="flex"; $("#loginPw").value=""; updateLoginMode(); }
+function tryRestoreSession(){ const no=localStorage.getItem("sup2_session"); if(no){ const u=users().find(x=>String(x.no)===no&&x.active!==false); if(u){ curUser=u; return true; } } return false; }
+async function refreshData(){ try{ const r=await fetch(DB.gs.url+"?token="+encodeURIComponent(DB.gs.token)+"&action=load"); const j=await r.json(); if(!j.error){ COLS.forEach(c=>DB.data[c]=j[c]||{}); normalizeData(); DB.saveLocal(); } }catch(e){} }
 function updateLoginMode(){ const no=$("#loginNo").value.trim(); const u=users().find(x=>x.no===no); const adm=u&&u.role==="admin"; const cf=$("#caseField"); if(cf) cf.style.display=adm?"none":""; }
 async function doLogin(){
   const no=$("#loginNo").value.trim(), pw=$("#loginPw").value;
-  let u=users().find(x=>x.no===no&&x.active!==false);
-  if((!u||!pwMatch(u.pw,pw))&&DB.mode==="sheets"){ toast("正在更新帳號資料…"); await refreshData(); u=users().find(x=>x.no===no&&x.active!==false); }
+  let u=users().find(x=>String(x.no)===no&&x.active!==false);
+  if((!u||!pwMatch(u.pw,pw))&&DB.mode==="sheets"){ toast("正在更新帳號資料…"); await refreshData(); u=users().find(x=>String(x.no)===no&&x.active!==false); }
   if(!u||!pwMatch(u.pw,pw)){ toast("編號或密碼錯誤"); return; }
   if(u.role==="admin"){ curUser=u; localStorage.setItem("sup2_session",no); applyRole(); showOverview(); toast(u.name+",您好!"); if(DB.mode==="sheets") DB.loadRemote(true); return; }
   let code=$("#loginCase").value.trim();
@@ -394,7 +426,7 @@ async function doLogin(){
   let cs=findCase(code);
   if(!cs && DB.mode==="sheets"){ toast("查詢個案中…"); await refreshData(); cs=findCase(code); }
   if(!cs){ toast("查無此個案代碼:"+code); return; }
-  if(!nurseList(cs).includes(u.no)){ guardAlert(); return; }
+  if(!nurseList(cs).includes(String(u.no))){ guardAlert(); return; }
   curUser=u; localStorage.setItem("sup2_session",no); applyRole(); enterCase(cs.id); toast(u.name+",您好!"); if(DB.mode==="sheets") DB.loadRemote(true);
 }
 function audit(action,target,detail){ DB.push("audit",{ts:nowTs(),time:fmtTs(nowTs()),caseId:curCase,action,user:curUser?curUser.name+"("+curUser.no+")":"?",target:target||"",detail:detail||""}); }
@@ -406,7 +438,7 @@ $("#modalBg").addEventListener("click",e=>{ if(e.target.id==="modalBg") closeMod
 let curTab="count";
 document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click",()=>{
   curTab=b.dataset.tab; document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("active",x===b));
-  ["count","buy","items","log","settings"].forEach(t=>$("#tab-"+t).style.display=t===curTab?"":"none");
+  ["count","buy","items","log","report","settings"].forEach(t=>$("#tab-"+t).style.display=t===curTab?"":"none");
   $("#submitbar").style.display = curTab==="count"?"flex":"none";
   $("#buybar").style.display = curTab==="buy"?"flex":"none";
   renderAll();
@@ -574,21 +606,120 @@ function resetPw(id){ const u=DB.data.users[id]; if(!confirm("將「"+u.name+"�
 function delUser(id){ const u=DB.data.users[id]; if(!confirm("刪除帳號「"+u.name+"」?"))return; DB.del("users",id); audit("刪除帳號",u.name,""); toast("已刪除"); }
 
 function exportBackup(){ const blob=new Blob([JSON.stringify(DB.data,null,2)],{type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="耗材點班備份_"+new Date().toISOString().slice(0,10)+".json"; a.click(); }
-function importBackup(file){ const fr=new FileReader(); fr.onload=()=>{ try{ const d=JSON.parse(fr.result); COLS.forEach(c=>{ if(d[c]) DB.data[c]=d[c]; }); DB.saveLocal(); ensureCase();
+function importBackup(file){ const fr=new FileReader(); fr.onload=()=>{ try{ const d=JSON.parse(fr.result); COLS.forEach(c=>{ if(d[c]) DB.data[c]=d[c]; }); normalizeData(); DB.saveLocal(); ensureCase();
   if(DB.mode==="sheets") DB.api({action:"import",data:DB.data}).then(()=>toast("已匯入並上傳 ✓"),()=>toast("已匯入(上傳待補)")); else toast("已匯入 ✓"); renderCaseBar(); if(viewMode==="overview") renderOverview(); else renderAll(); }catch(e){ toast("匯入失敗:"+e.message); } }; fr.readAsText(file); }
 
+function showStats(){ if(!isAdmin())return; viewMode="stats"; $("#loginBg").style.display="none"; $("#overviewScreen").style.display="none"; $("#statsScreen").style.display=""; $("#caseBar").style.display="none"; document.querySelector("nav").style.display="none"; document.querySelector("main").style.display="none"; $("#submitbar").style.display="none"; $("#buybar").style.display="none"; $("#overviewBtn").style.display="none"; renderStats(); }
+function renderStats(){
+  const cs=allCases(); const weekAgo=Date.now()-7*86400000;
+  let itemsTotal=0, lowTotal=0, eventsWeek=0; const lowItems=[]; const perCase=[];
+  cs.forEach(c=>{ const its=Object.values(DB.data.items||{}).filter(i=>i.caseId===c.id);
+    const cts=Object.values(DB.data.counts||{}).filter(x=>x.caseId===c.id);
+    let low=0,last=0; its.forEach(it=>{ const l=latestCount(it.id); if(l){ if(l.ts>last)last=l.ts; if(Number(l.qty)<=Number(it.safety)){ low++; lowItems.push({code:c.code,name:it.name,qty:l.qty,safety:Number(it.safety),unit:it.unit||"",suggest:Math.max(Number(it.target)-Number(l.qty),0)}); } } });
+    itemsTotal+=its.length; lowTotal+=low; eventsWeek+=cts.filter(x=>x.ts>=weekAgo).length;
+    perCase.push({code:c.code,name:c.name||"",items:its.length,low,last,events:cts.length}); });
+  const byNurse={}; Object.values(DB.data.counts||{}).forEach(x=>{ if(x.ts>=weekAgo){ const k=x.userName||"?"; byNurse[k]=(byNurse[k]||0)+1; } });
+  const nurseRows=Object.entries(byNurse).sort((a,b)=>b[1]-a[1]);
+  let h='<div class="kpis" style="grid-template-columns:repeat(4,1fr)">'
+    +'<div class="kpi"><div class="n" style="color:var(--blue)">'+cs.length+'</div><div class="l">個案數</div></div>'
+    +'<div class="kpi"><div class="n" style="color:var(--ink)">'+itemsTotal+'</div><div class="l">品項總數</div></div>'
+    +'<div class="kpi"><div class="n" style="color:var(--red)">'+lowTotal+'</div><div class="l">待補貨品項</div></div>'
+    +'<div class="kpi"><div class="n" style="color:var(--green)">'+eventsWeek+'</div><div class="l">本週點班</div></div></div>';
+  h+='<div class="card"><div class="sectitle">各個案概況</div><div style="overflow-x:auto"><table><tr><th>個案</th><th>品項</th><th>需補貨</th><th>點班次數</th><th>最後點班</th></tr>';
+  perCase.sort((a,b)=>b.low-a.low||(b.last-a.last)).forEach(p=>{ h+='<tr><td><b>'+esc(p.code)+'</b>'+(p.name?' <span class="muted">'+esc(p.name)+'</span>':'')+'</td><td>'+p.items+'</td><td'+(p.low?' class="red"':'')+'>'+p.low+'</td><td>'+p.events+'</td><td class="muted">'+(p.last?mdhm(p.last):"—")+'</td></tr>'; });
+  if(!perCase.length) h+='<tr><td colspan="5" class="muted" style="padding:12px">尚無個案</td></tr>';
+  h+='</table></div></div>';
+  h+='<div class="card"><div class="sectitle">待補貨清單(跨個案)</div>';
+  if(lowItems.length){ h+='<div style="overflow-x:auto"><table><tr><th>個案</th><th>品項</th><th>現有</th><th>建議補</th></tr>';
+    lowItems.sort((a,b)=>(a.qty/(a.safety||1))-(b.qty/(b.safety||1))).forEach(x=>{ h+='<tr><td>'+esc(x.code)+'</td><td><b>'+esc(x.name)+'</b></td><td class="red">'+x.qty+esc(x.unit)+'</td><td><b>'+x.suggest+esc(x.unit)+'</b></td></tr>'; });
+    h+='</table></div>'; } else h+='<p class="muted">目前沒有需要補貨的品項 👍</p>';
+  h+='</div>';
+  h+='<div class="card"><div class="sectitle">本週點班活躍度(近 7 天)</div>';
+  if(nurseRows.length){ h+='<div style="overflow-x:auto"><table><tr><th>點班者</th><th>點班次數</th></tr>';
+    nurseRows.forEach(r=>{ h+='<tr><td>'+esc(r[0])+'</td><td>'+r[1]+'</td></tr>'; }); h+='</table></div>'; }
+  else h+='<p class="muted">近 7 天尚無點班紀錄</p>';
+  h+='</div>';
+  $("#statsBody").innerHTML=h;
+}
+
+function openCaseManage(){ if(!isAdmin())return; renderManageModal(); }
+function renderManageModal(){
+  const list=allCases();
+  const rows = list.length ? list.map(c=>{ const n=Object.values(DB.data.items||{}).filter(i=>i.caseId===c.id).length; const nn=nurseList(c).length;
+    return '<tr><td><b>'+esc(c.code)+'</b>'+(c.name?'<br><span class="muted">'+esc(c.name)+'</span>':'')+'</td><td class="muted">'+n+' 品項<br>'+nn+' 人照護</td>'
+      +'<td style="white-space:nowrap"><button class="ghost" onclick="assignCase(\''+c.id+'\')">指派</button> '
+      +'<button class="ghost" onclick="clearCaseM(\''+c.id+'\')">清紀錄</button> '
+      +'<button class="ghost danger" onclick="deleteCaseM(\''+c.id+'\')">刪除</button></td></tr>'; }).join("")
+    : '<tr><td colspan="3" class="muted" style="padding:12px">尚無個案</td></tr>';
+  openModal('<h3>🗂 管理 / 刪除個案</h3><p class="muted">可指派護理師、清除點班紀錄、或刪除整個個案。</p><div style="overflow-x:auto;margin-top:8px"><table><tr><th>個案</th><th>內容</th><th></th></tr>'+rows+'</table></div><div class="btnrow"><button class="primary" onclick="closeModal()">關閉</button></div>');
+}
+function clearCaseM(id){ const c=DB.data.cases[id]; if(!confirm("清除「"+c.code+"」的所有點班紀錄?\n(品項會保留)"))return;
+  Object.values(DB.data.counts||{}).forEach(x=>{ if(x.caseId===id) DB.del("counts",x.id); }); audit("清除點班紀錄",c.code,""); renderManageModal(); if(viewMode==="overview")renderOverview(); toast("已清除 "+c.code+" 的點班紀錄"); }
+function deleteCaseM(id){ const c=DB.data.cases[id]; if(!confirm("刪除整個個案「"+c.code+"」?\n品項與點班紀錄都會一併刪除,無法復原。"))return;
+  Object.values(DB.data.items||{}).forEach(x=>{ if(x.caseId===id) DB.del("items",x.id); });
+  Object.values(DB.data.counts||{}).forEach(x=>{ if(x.caseId===id) DB.del("counts",x.id); });
+  DB.del("cases",id); audit("刪除個案",c.code,""); ensureCase(); renderCaseBar(); renderManageModal(); if(viewMode==="overview")renderOverview(); toast("已刪除個案 "+c.code); }
+
+function showConnect(){ $("#connUrl").textContent=DEFAULT_GS.url||$("#gsUrl").value||"(未設定網址)"; const lg=document.getElementById("hdLogo"); if(lg&&$("#connLogo"))$("#connLogo").src=lg.src; $("#loginBg").style.display="none"; $("#setupBg").style.display="none"; $("#overviewScreen").style.display="none"; $("#statsScreen").style.display="none"; document.querySelector("main").style.display="none"; $("#caseBar").style.display="none"; document.querySelector("nav").style.display="none"; $("#submitbar").style.display="none"; $("#buybar").style.display="none"; $("#connectBg").style.display="flex"; }
+async function doConnect(){ const token=$("#connToken").value.trim(); const url=(DEFAULT_GS.url||$("#gsUrl").value||"").trim(); if(!url){ toast("尚未設定雲端網址"); return; } if(!token){ toast("請輸入雲端密碼"); return; } await DB.connectGS(url, token, true); if(DB.mode==="sheets"){ $("#connectBg").style.display="none"; bootDecide(); } }
+function showSetup(){ const lg=document.getElementById("hdLogo"); if(lg && $("#setupLogo")) $("#setupLogo").src=lg.src; $("#loginBg").style.display="none"; $("#overviewScreen").style.display="none"; $("#statsScreen").style.display="none"; document.querySelector("main").style.display="none"; $("#caseBar").style.display="none"; document.querySelector("nav").style.display="none"; $("#submitbar").style.display="none"; $("#buybar").style.display="none"; $("#setupBg").style.display="flex"; }
+function doSetup(){ const no=$("#setNo").value.trim(), name=$("#setName").value.trim(), pw=$("#setPw").value; if(!no||!name){ toast("請填編號與姓名"); return; } if(!pw){ toast("請設定密碼"); return; } if(DB.data.users && DB.data.users["u"+no]){ toast("編號已存在"); return; } DB.set("users","u"+no,{id:"u"+no,no,name,role:"admin",pw,active:true}); curUser=DB.data.users["u"+no]; localStorage.setItem("sup2_session",no); $("#setupBg").style.display="none"; applyRole(); showOverview(); toast("管理者帳號已建立 ✓"); }
+
+function renderReport(){
+  const gb=blockedView(); if(gb){ $("#reportBody").innerHTML=gb; return; }
+  const list=items(); const cts=counts(); const c=DB.data.cases[curCase]||{};
+  const weekAgo=Date.now()-7*86400000;
+  let low=0,last=0; list.forEach(it=>{ const l=latestCount(it.id); if(l){ if(l.ts>last)last=l.ts; if(Number(l.qty)<=Number(it.safety))low++; } });
+  const weekEvents=cts.filter(x=>x.ts>=weekAgo).length;
+  let h='<div class="ov-head" style="font-size:16px;margin-bottom:10px">'+esc(c.code||"")+(c.name?' · '+esc(c.name):'')+' 統計報表</div>';
+  h+='<div class="kpis" style="grid-template-columns:repeat(4,1fr)">'
+   +'<div class="kpi"><div class="n" style="color:var(--blue)">'+list.length+'</div><div class="l">品項數</div></div>'
+   +'<div class="kpi"><div class="n" style="color:var(--red)">'+low+'</div><div class="l">需補貨</div></div>'
+   +'<div class="kpi"><div class="n" style="color:var(--green)">'+weekEvents+'</div><div class="l">本週點班</div></div>'
+   +'<div class="kpi"><div class="n" style="color:var(--ink);font-size:13px;padding-top:6px">'+(last?mdhm(last):"—")+'</div><div class="l">最後點班</div></div></div>';
+  h+='<div class="card"><div class="sectitle">各品項現況</div>';
+  if(list.length){ h+='<div style="overflow-x:auto"><table><tr><th>品項</th><th>現有</th><th style="min-width:120px">存量</th><th>狀態</th></tr>';
+    list.forEach(it=>{ const l=latestCount(it.id); const q=l?Number(l.qty):null; const tgt=Number(it.target)||1; const pct=q==null?0:Math.min(Math.round(q/tgt*100),100); const lowf=q!=null&&q<=Number(it.safety);
+      const col=lowf?"var(--red)":"var(--green)";
+      const bar='<div style="background:#eef2f7;border-radius:6px;height:8px;overflow:hidden;margin-top:5px"><div style="height:100%;width:'+pct+'%;background:'+col+'"></div></div>';
+      const qcell = q==null ? '<span class="muted">未點</span>' : (q+esc(it.unit||""));
+      const stcell = q==null ? '<span class="pill none">未點</span>' : (lowf?'<span class="pill low">需補貨</span>':'<span class="pill ok">足夠</span>');
+      h+='<tr><td><b>'+esc(it.name)+'</b></td><td'+(lowf?' class="red"':'')+'>'+qcell+'</td><td><span class="muted">安全 '+it.safety+' / 目標 '+it.target+'</span>'+bar+'</td><td>'+stcell+'</td></tr>'; });
+    h+='</table></div>'; } else h+='<p class="muted">尚無品項</p>';
+  h+='</div>';
+  const byN={}; cts.forEach(x=>{ if(x.ts>=weekAgo){ const k=x.userName||"?"; byN[k]=(byN[k]||0)+1; } });
+  const rows=Object.entries(byN).sort((a,b)=>b[1]-a[1]);
+  h+='<div class="card"><div class="sectitle">本週點班活躍度(近 7 天)</div>';
+  if(rows.length){ h+='<div style="overflow-x:auto"><table><tr><th>點班者</th><th>點班次數</th></tr>'+rows.map(r=>'<tr><td>'+esc(r[0])+'</td><td>'+r[1]+'</td></tr>').join("")+'</table></div>'; }
+  else h+='<p class="muted">近 7 天尚無點班紀錄</p>';
+  h+='</div>';
+  $("#reportBody").innerHTML=h;
+}
+
+function normalizeData(){
+  Object.values(DB.data.users||{}).forEach(u=>{ if(u.no!=null)u.no=String(u.no); if(u.pw!=null)u.pw=String(u.pw); });
+  Object.values(DB.data.cases||{}).forEach(c=>{ if(c.id!=null)c.id=String(c.id); if(c.code!=null)c.code=String(c.code); if(c.nurses!=null)c.nurses=String(c.nurses); });
+  Object.values(DB.data.items||{}).forEach(i=>{ if(i.caseId!=null)i.caseId=String(i.caseId); });
+  Object.values(DB.data.counts||{}).forEach(x=>{ if(x.caseId!=null)x.caseId=String(x.caseId); if(x.userNo!=null)x.userNo=String(x.userNo); });
+}
 function renderAll(){
   if(viewMode==="overview"){ renderOverview(); return; }
+  if(viewMode==="stats"){ renderStats(); return; }
   if(curTab==="count") renderCount();
   else if(curTab==="buy") renderBuy();
   else if(curTab==="items") renderItems();
   else if(curTab==="log") renderLog();
+  else if(curTab==="report") renderReport();
   else if(curTab==="settings"){ updateSyncBadge(); renderCases(); renderUsers(); }
 }
 
 $("#caseSel").addEventListener("change",e=>setCase(e.target.value));
 $("#overviewBtn").addEventListener("click",showOverview);
+$("#caseBackBtn").addEventListener("click",showOverview);
 $("#ovAddCase").addEventListener("click",addCase);
+$("#ovStats").addEventListener("click",showStats);
+$("#ovManage").addEventListener("click",openCaseManage);
+$("#statsBack").addEventListener("click",showOverview);
 $("#submitBtn").addEventListener("click",submitCounts);
 $("#copyBuy").addEventListener("click",copyBuy);
 $("#stockReportBtn").addEventListener("click",stockReport);
@@ -602,6 +733,11 @@ $("#refreshBtn").addEventListener("click",()=>DB.loadRemote(false));
 $("#syncBadge").addEventListener("click",()=>{ if(viewMode==="case") document.querySelector('nav button[data-tab="settings"]').click(); });
 $("#logoutBtn").addEventListener("click",showLogin);
 $("#loginBtn").addEventListener("click",doLogin);
+$("#setBtn").addEventListener("click",doSetup);
+$("#connBtn").addEventListener("click",doConnect);
+$("#connToken").addEventListener("keydown",e=>{ if(e.key==="Enter") doConnect(); });
+$("#connLocal").addEventListener("click",showSetup);
+$("#setPw").addEventListener("keydown",e=>{ if(e.key==="Enter") doSetup(); });
 $("#loginPw").addEventListener("keydown",e=>{ if(e.key==="Enter") doLogin(); });
 $("#loginCase").addEventListener("keydown",e=>{ if(e.key==="Enter") doLogin(); });
 $("#loginNo").addEventListener("input",updateLoginMode);
@@ -609,13 +745,15 @@ $("#gsConnectBtn").addEventListener("click",()=>{ const url=$("#gsUrl").value.tr
   if(!/^https:\/\/script\.google(usercontent)?\.com\/.+/.test(url)){ toast("網址應為 script.google.com 開頭、/exec 結尾"); return; } if(!token){ toast("請填密碼"); return; } DB.connectGS(url,token,false); });
 $("#gsDisconnectBtn").addEventListener("click",()=>DB.disconnectGS());
 
+function bootDecide(){
+  if(!DB.data.users || !Object.keys(DB.data.users).length){ if(DB.mode==="sheets") showSetup(); else showConnect(); return; }
+  if(tryRestoreSession()){
+    applyRole();
+    if(isAdmin()){ showOverview(); }
+    else { ensureCase(); if(curCase && canAccess(curCase)) enterCase(curCase); else showLogin(); }
+  } else { showLogin(); }
+}
 DB.init();
-if(tryRestoreSession()){
-  applyRole();
-  if(isAdmin()){ showOverview(); }
-  else { ensureCase(); if(curCase && canAccess(curCase)) enterCase(curCase); else showLogin(); }
-  if(DB.mode==="sheets") DB.loadRemote(true);
-} else { showLogin(); }
 </script>
 </body>
 </html>
